@@ -49,7 +49,6 @@ func main() {
 	var projectileDirection rl.Vector3
 	var projectileSpeed float32
 
-	// Funkcja obliczająca czas lotu
 	calculateTimeOfFlight := func(v0y float32, y0 float32) float32 {
 		a := gravity / 2
 		b := -v0y
@@ -58,7 +57,6 @@ func main() {
 		return float32((-float64(b) + math.Sqrt(float64(b*b-4*a*c))) / (2 * float64(a)))
 	}
 
-	// Funkcja obliczająca pozycję w danym czasie
 	calculatePosition := func(startPos rl.Vector3, direction rl.Vector3, speed float32, t float32) rl.Vector3 {
 		return rl.NewVector3(
 			startPos.X+speed*direction.X*t,
@@ -67,11 +65,61 @@ func main() {
 		)
 	}
 
+	calculateIntersectionY0 := func(start rl.Vector3, direction rl.Vector3) rl.Vector3 {
+		direction = rl.Vector3Normalize(direction)
+
+		if direction.Y == 0 {
+			return rl.NewVector3(
+				start.X-direction.X*10,
+				start.Y,
+				start.Z-direction.Z*10,
+			)
+		}
+
+		t := -start.Y / direction.Y
+		intersection := rl.NewVector3(
+			start.X+t*direction.X,
+			0,
+			start.Z+t*direction.Z,
+		)
+
+		toIntersection := rl.Vector3Subtract(intersection, start)
+		dotProduct := rl.Vector3DotProduct(direction, toIntersection)
+
+		if dotProduct > 0 {
+			return rl.NewVector3(
+				start.X-direction.X*10,
+				start.Y-direction.Y*10,
+				start.Z-direction.Z*10,
+			)
+		}
+
+		distance := rl.Vector3Distance(start, intersection)
+
+		if direction.Y < 0 {
+			if distance > 10 {
+				scale := 10 / distance
+				return rl.NewVector3(
+					start.X+(intersection.X-start.X)*scale,
+					start.Y+(intersection.Y-start.Y)*scale,
+					start.Z+(intersection.Z-start.Z)*scale,
+				)
+			}
+			return intersection
+		} else {
+			return rl.NewVector3(
+				start.X-direction.X*10,
+				start.Y-direction.Y*10,
+				start.Z-direction.Z*10,
+			)
+		}
+	}
+
 	calculateLandingPoint := func(direction rl.Vector3, speed float32, startPos rl.Vector3) rl.Vector3 {
 		v0y := speed * direction.Y
 		timeOfFlight := calculateTimeOfFlight(v0y, startPos.Y)
 		position := calculatePosition(startPos, direction, speed, timeOfFlight)
-		position.Y = 0 // Upewniamy się, że punkt lądowania jest dokładnie na poziomie ziemi
+		position.Y = 0
 		return position
 	}
 
@@ -82,6 +130,12 @@ func main() {
 		rl.SetMousePosition(int(screenWidth)/2, int(screenHeight)/2)
 		rl.DisableCursor()
 
+		if rl.IsKeyDown(rl.KeyLeftShift) {
+			camera.Position.Y += 0.01
+		} else if rl.IsKeyDown(rl.KeyLeftControl) {
+			camera.Position.Y -= 0.01
+		}
+
 		if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 			mousePressTime = 0.0
 			isMousePressed = true
@@ -89,12 +143,17 @@ func main() {
 
 		if isMousePressed {
 			mousePressTime += rl.GetFrameTime()
+			currentDirection := rl.Vector3Normalize(rl.Vector3Subtract(camera.Target, camera.Position))
+			initialSpeed := mousePressTime * SPEED_SCALER
+			if initialSpeed > MAX_SPEED {
+				initialSpeed = MAX_SPEED
+			}
+			landingPoint = calculateLandingPoint(currentDirection, initialSpeed, camera.Position)
 		}
 
 		if rl.IsMouseButtonReleased(rl.MouseLeftButton) {
 			isMousePressed = false
 			wasMousePressed = true
-			time = 0.0
 
 			projectileStartPos = camera.Position
 			projectileDirection = rl.Vector3Normalize(rl.Vector3Subtract(camera.Target, camera.Position))
@@ -104,7 +163,11 @@ func main() {
 			}
 
 			spherePosition = projectileStartPos
+		}
+
+		if rl.IsKeyPressed(rl.KeySpace) && wasMousePressed {
 			isProjectileActive = true
+			time = 0.0
 		}
 
 		if isProjectileActive {
@@ -129,15 +192,17 @@ func main() {
 			rl.DrawSphere(spherePosition, 0.2, rl.Red)
 			rl.DrawSphere(landingPoint, 0.1, rl.Blue)
 			rl.DrawCircle3D(landingPoint, 1.0, rl.NewVector3(1, 0, 0), 90, rl.Fade(rl.Blue, 0.5))
-		}
+			cylinderStart := rl.NewVector3(
+				projectileStartPos.X-projectileDirection.X*0.5,
+				projectileStartPos.Y-projectileDirection.Y*0.5,
+				projectileStartPos.Z-projectileDirection.Z*0.5,
+			)
+			cylinderEnd := calculateIntersectionY0(cylinderStart, projectileDirection)
 
-		if isMousePressed {
-			currentDirection := rl.Vector3Normalize(rl.Vector3Subtract(camera.Target, camera.Position))
-			initialSpeed := mousePressTime * SPEED_SCALER
-			if initialSpeed > MAX_SPEED {
-				initialSpeed = MAX_SPEED
+			rl.DrawCylinderEx(cylinderStart, cylinderEnd, 0.2, 0.2, 10, rl.DarkGray)
+			if rl.Vector3Distance(cylinderStart, cylinderEnd) > 9.9 {
+				rl.DrawCylinderEx(cylinderEnd, rl.NewVector3(cylinderEnd.X, -0.1, cylinderEnd.Z), 0.2, 0.2, 10, rl.Black)
 			}
-			landingPoint = calculateLandingPoint(currentDirection, initialSpeed, camera.Position)
 		}
 
 		rl.DrawPlane(rl.NewVector3(0, 0, 0), rl.NewVector2(128, 128), rl.LightGray)
