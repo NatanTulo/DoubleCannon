@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 
@@ -35,7 +36,6 @@ func main() {
 
 	rl.SetTargetFPS(120)
 	var time float32
-	var isProjectileActive bool
 	var wasMousePressed bool = false
 	var gravity float32 = 9.81
 	var mousePressTime float32
@@ -43,11 +43,17 @@ func main() {
 	const MAX_SPEED float32 = 50.0
 	const SPEED_SCALER float32 = 20.0
 	var landingPoint rl.Vector3
-	var spherePosition rl.Vector3
 
+	var spherePosition rl.Vector3
+	var isProjectileActive bool
 	var projectileStartPos rl.Vector3
 	var projectileDirection rl.Vector3
 	var projectileSpeed float32
+
+	var timeOfFlightPred float32
+	var numberSpacePressed int
+	var timeDifferece float32
+	var Pause bool
 
 	calculateTimeOfFlight := func(v0y float32, y0 float32) float32 {
 		a := gravity / 2
@@ -117,17 +123,18 @@ func main() {
 
 	calculateLandingPoint := func(direction rl.Vector3, speed float32, startPos rl.Vector3) rl.Vector3 {
 		v0y := speed * direction.Y
-		timeOfFlight := calculateTimeOfFlight(v0y, startPos.Y)
-		position := calculatePosition(startPos, direction, speed, timeOfFlight)
+		timeOfFlightPred = calculateTimeOfFlight(v0y, startPos.Y)
+		position := calculatePosition(startPos, direction, speed, timeOfFlightPred)
 		position.Y = 0
 		return position
 	}
 
 	for !rl.WindowShouldClose() {
 		rl.UpdateCamera(&camera, rl.CameraFirstPerson)
-		time += rl.GetFrameTime()
-
-		rl.SetMousePosition(int(screenWidth)/2, int(screenHeight)/2)
+		if !Pause {
+			time += rl.GetFrameTime()
+		}
+		// rl.SetMousePosition(int32(screenWidth)/2, int32(screenHeight)/2) - czy na laptopie jest potrzebne?
 		rl.DisableCursor()
 
 		if rl.IsKeyDown(rl.KeyLeftShift) {
@@ -166,8 +173,16 @@ func main() {
 		}
 
 		if rl.IsKeyPressed(rl.KeySpace) && wasMousePressed {
-			isProjectileActive = true
-			time = 0.0
+			numberSpacePressed++
+			if numberSpacePressed%2 == 1 {
+				isProjectileActive = true
+				time = 0.0
+			} else {
+				timeDifferece = timeOfFlightPred - time
+			}
+		}
+		if rl.IsKeyPressed(rl.KeyP) {
+			Pause = !Pause
 		}
 
 		if isProjectileActive {
@@ -182,6 +197,8 @@ func main() {
 				spherePosition.Y = 0
 			}
 		}
+
+		//obsługa drugiej kuli
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.SkyBlue)
@@ -224,6 +241,10 @@ func main() {
 		rl.DrawRectangleLines(10, 50, 220, 50, rl.Blue)
 
 		rl.DrawFPS(20, 20)
+
+		rl.DrawText(fmt.Sprintf("Time of flight: %f", timeOfFlightPred), 20, 120, 16, rl.White)
+		rl.DrawText(fmt.Sprintf("Time to arrive at destination: %f", timeDifferece), 20, 140, 16, rl.White)
+		rl.DrawText(fmt.Sprintf("Number of space pressed: %d", numberSpacePressed), 20, 160, 16, rl.White)
 
 		rl.EndDrawing()
 	}
