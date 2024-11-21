@@ -1,9 +1,10 @@
+//camera & level design based on: https://github.com/gen2brain/raylib-go/blob/master/examples/core/3d_camera_first_person/main.go
+
 package main
 
 import (
 	"fmt"
 	"math"
-	"math/rand"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -12,29 +13,28 @@ func main() {
 	screenWidth := int32(1920)
 	screenHeight := int32(1080)
 
-	rl.InitWindow(screenWidth, screenHeight, "raylib [core] example - 3d camera first person")
+	rl.InitWindow(screenWidth, screenHeight, "WNO projekt - 193527")
 	defer rl.CloseWindow()
 
 	rl.SetConfigFlags(rl.FlagVsyncHint)
-	camera := rl.Camera3D{
-		Position:   rl.NewVector3(4, 2, 4),
-		Target:     rl.NewVector3(0, 1.8, 0),
-		Up:         rl.NewVector3(0, 1, 0),
-		Fovy:       60,
-		Projection: rl.CameraProjection(rl.CameraPerspective),
-	}
+	camera := rl.Camera3D{}
+	camera.Position = rl.NewVector3(4.0, 2.0, 4.0)
+	camera.Target = rl.NewVector3(0.0, 1.8, 0.0)
+	camera.Up = rl.NewVector3(0.0, 1.0, 0.0)
+	camera.Fovy = 60.0
+	camera.Projection = rl.CameraPerspective
 
 	heights := make([]float32, 20)
 	positions := make([]rl.Vector3, 20)
 	colors := make([]rl.Color, 20)
 
 	for i := 0; i < 20; i++ {
-		heights[i] = float32(rand.Intn(12) + 1)
-		positions[i] = rl.NewVector3(float32(rand.Intn(31)-15), heights[i]/2, float32(rand.Intn(31)-15))
-		colors[i] = rl.NewColor(uint8(rand.Intn(236)+20), uint8(rand.Intn(46)+10), 30, 255)
+		heights[i] = float32(rl.GetRandomValue(1, 12))
+		positions[i] = rl.NewVector3(float32(rl.GetRandomValue(-15, 15)), heights[i]/2, float32(rl.GetRandomValue(-15, 15)))
+		colors[i] = rl.NewColor(uint8(rl.GetRandomValue(20, 255)), uint8(rl.GetRandomValue(10, 55)), 30, 255)
 	}
 
-	rl.SetTargetFPS(120)
+	rl.SetTargetFPS(60)
 	var time float32
 	var wasMousePressed bool = false
 	var gravity float32 = 9.81
@@ -43,17 +43,41 @@ func main() {
 	const MAX_SPEED float32 = 50.0
 	const SPEED_SCALER float32 = 20.0
 	var landingPoint rl.Vector3
-
-	var spherePosition rl.Vector3
-	var isProjectileActive bool
-	var projectileStartPos rl.Vector3
-	var projectileDirection rl.Vector3
-	var projectileSpeed float32
-
-	var timeOfFlightPred float32
 	var numberSpacePressed int
-	var timeDifferece float32
 	var Pause bool
+	var tooLate bool
+
+	var spherePositionRed rl.Vector3
+	var isProjectileActiveRed bool
+	var projectileStartPosRed rl.Vector3
+	var projectileDirectionRed rl.Vector3
+	var projectileSpeedRed float32
+	var timeOfFlightRed float32
+
+	var spherePositionGreen rl.Vector3
+	var isProjectileActiveGreen bool
+	var projectileDirectionGreen rl.Vector3
+	var projectileSpeedGreen float32
+	var timeOfFlightGreen float32
+	var greenTime float32
+
+	calculateTrajectory := func(startPos rl.Vector3, landingPoint rl.Vector3, timeOfFlight float32) (rl.Vector3, float32) {
+		horizontalDistance := rl.NewVector3(landingPoint.X-startPos.X, 0, landingPoint.Z-startPos.Z)
+		horizontalSpeed := rl.Vector3Length(horizontalDistance) / timeOfFlight
+		v0y := (landingPoint.Y - startPos.Y + 0.5*gravity*timeOfFlight*timeOfFlight) / timeOfFlight
+		totalSpeed := float32(math.Sqrt(
+			math.Pow(float64(horizontalSpeed), 2) +
+				math.Pow(float64(v0y), 2),
+		))
+
+		direction := rl.NewVector3(
+			horizontalDistance.X/rl.Vector3Length(horizontalDistance),
+			v0y/totalSpeed,
+			horizontalDistance.Z/rl.Vector3Length(horizontalDistance),
+		)
+
+		return direction, totalSpeed
+	}
 
 	calculateTimeOfFlight := func(v0y float32, y0 float32) float32 {
 		a := gravity / 2
@@ -123,8 +147,8 @@ func main() {
 
 	calculateLandingPoint := func(direction rl.Vector3, speed float32, startPos rl.Vector3) rl.Vector3 {
 		v0y := speed * direction.Y
-		timeOfFlightPred = calculateTimeOfFlight(v0y, startPos.Y)
-		position := calculatePosition(startPos, direction, speed, timeOfFlightPred)
+		timeOfFlightRed = calculateTimeOfFlight(v0y, startPos.Y)
+		position := calculatePosition(startPos, direction, speed, timeOfFlightRed)
 		position.Y = 0
 		return position
 	}
@@ -134,7 +158,6 @@ func main() {
 		if !Pause {
 			time += rl.GetFrameTime()
 		}
-		// rl.SetMousePosition(int32(screenWidth)/2, int32(screenHeight)/2) - czy na laptopie jest potrzebne?
 		rl.DisableCursor()
 
 		if rl.IsKeyDown(rl.KeyLeftShift) {
@@ -162,43 +185,61 @@ func main() {
 			isMousePressed = false
 			wasMousePressed = true
 
-			projectileStartPos = camera.Position
-			projectileDirection = rl.Vector3Normalize(rl.Vector3Subtract(camera.Target, camera.Position))
-			projectileSpeed = mousePressTime * SPEED_SCALER
-			if projectileSpeed > MAX_SPEED {
-				projectileSpeed = MAX_SPEED
+			projectileStartPosRed = camera.Position
+			projectileDirectionRed = rl.Vector3Normalize(rl.Vector3Subtract(camera.Target, camera.Position))
+			projectileSpeedRed = mousePressTime * SPEED_SCALER
+			if projectileSpeedRed > MAX_SPEED {
+				projectileSpeedRed = MAX_SPEED
 			}
 
-			spherePosition = projectileStartPos
+			spherePositionRed = projectileStartPosRed
+			spherePositionGreen = projectileStartPosRed
 		}
 
 		if rl.IsKeyPressed(rl.KeySpace) && wasMousePressed {
 			numberSpacePressed++
 			if numberSpacePressed%2 == 1 {
-				isProjectileActive = true
+				isProjectileActiveRed = true
 				time = 0.0
+				tooLate = false
 			} else {
-				timeDifferece = timeOfFlightPred - time
+				timeOfFlightGreen = timeOfFlightRed - time
+				if timeOfFlightGreen > 0 {
+					projectileDirectionGreen, projectileSpeedGreen = calculateTrajectory(projectileStartPosRed, landingPoint, timeOfFlightGreen)
+
+					isProjectileActiveGreen = true
+					greenTime = 0
+				} else {
+					tooLate = true
+				}
 			}
 		}
+
 		if rl.IsKeyPressed(rl.KeyP) {
 			Pause = !Pause
 		}
 
-		if isProjectileActive {
-			spherePosition = calculatePosition(projectileStartPos, projectileDirection, projectileSpeed, time)
+		if isProjectileActiveRed {
+			spherePositionRed = calculatePosition(projectileStartPosRed, projectileDirectionRed, projectileSpeedRed, time)
 
-			if spherePosition.Y <= 0 {
-				isProjectileActive = false
-				// Obliczamy dokładną pozycję lądowania
-				v0y := projectileSpeed * projectileDirection.Y
-				timeOfFlight := calculateTimeOfFlight(v0y, projectileStartPos.Y)
-				spherePosition = calculatePosition(projectileStartPos, projectileDirection, projectileSpeed, timeOfFlight)
-				spherePosition.Y = 0
+			if spherePositionRed.Y <= 0 {
+				isProjectileActiveRed = false
+				v0y := projectileSpeedRed * projectileDirectionRed.Y
+				timeOfFlight := calculateTimeOfFlight(v0y, projectileStartPosRed.Y)
+				spherePositionRed = calculatePosition(projectileStartPosRed, projectileDirectionRed, projectileSpeedRed, timeOfFlight)
+				spherePositionRed.Y = 0
 			}
 		}
 
-		//obsługa drugiej kuli
+		if isProjectileActiveGreen {
+			greenTime += rl.GetFrameTime()
+
+			if greenTime >= timeOfFlightGreen {
+				isProjectileActiveGreen = false
+			} else {
+				spherePositionGreen = calculatePosition(projectileStartPosRed, projectileDirectionGreen, projectileSpeedGreen, greenTime)
+			}
+		}
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.SkyBlue)
@@ -206,15 +247,16 @@ func main() {
 		rl.BeginMode3D(camera)
 
 		if wasMousePressed {
-			rl.DrawSphere(spherePosition, 0.2, rl.Red)
+			rl.DrawSphere(spherePositionRed, 0.2, rl.Red)
 			rl.DrawSphere(landingPoint, 0.1, rl.Blue)
+			rl.DrawSphere(spherePositionGreen, 0.2, rl.Green)
 			rl.DrawCircle3D(landingPoint, 1.0, rl.NewVector3(1, 0, 0), 90, rl.Fade(rl.Blue, 0.5))
 			cylinderStart := rl.NewVector3(
-				projectileStartPos.X-projectileDirection.X*0.5,
-				projectileStartPos.Y-projectileDirection.Y*0.5,
-				projectileStartPos.Z-projectileDirection.Z*0.5,
+				projectileStartPosRed.X-projectileDirectionRed.X*0.5,
+				projectileStartPosRed.Y-projectileDirectionRed.Y*0.5,
+				projectileStartPosRed.Z-projectileDirectionRed.Z*0.5,
 			)
-			cylinderEnd := calculateIntersectionY0(cylinderStart, projectileDirection)
+			cylinderEnd := calculateIntersectionY0(cylinderStart, projectileDirectionRed)
 
 			rl.DrawCylinderEx(cylinderStart, cylinderEnd, 0.2, 0.2, 10, rl.DarkGray)
 			if rl.Vector3Distance(cylinderStart, cylinderEnd) > 9.9 {
@@ -242,9 +284,12 @@ func main() {
 
 		rl.DrawFPS(20, 20)
 
-		rl.DrawText(fmt.Sprintf("Time of flight: %f", timeOfFlightPred), 20, 120, 16, rl.White)
-		rl.DrawText(fmt.Sprintf("Time to arrive at destination: %f", timeDifferece), 20, 140, 16, rl.White)
+		rl.DrawText(fmt.Sprintf("Time of flight: %f", timeOfFlightRed), 20, 120, 16, rl.White)
+		rl.DrawText(fmt.Sprintf("Time to arrive at destination: %f", timeOfFlightGreen), 20, 140, 16, rl.White)
 		rl.DrawText(fmt.Sprintf("Number of space pressed: %d", numberSpacePressed), 20, 160, 16, rl.White)
+		if tooLate {
+			rl.DrawText("You tried to shoot to late!", 20, 180, 24, rl.White)
+		}
 
 		rl.EndDrawing()
 	}
